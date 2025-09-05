@@ -27,27 +27,30 @@ RUN apt-get update -y --fix-missing \
 
 # https://github.com/pypa/pip/issues/2897 0 in this case actually means no cache dir
 ENV PIP_NO_CACHE_DIR=0
+# just to try to avoid extra size
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV UV_BREAK_SYSTEM_PACKAGES=1
+ENV UV_SYSTEM_PYTHON=true
 ENV UV_NO_CACHE=1
-ENV WORKSPACE="/workspace"
-WORKDIR ${WORKSPACE}
-RUN python3 -m venv venv
+ENV WORKSPACE_CONTAINER="/workspace_container"
+ENV WORKSPACE_PERMANENT="/workspace"
+WORKDIR "${WORKSPACE_CONTAINER}"
 RUN mkdir "pip_cache" && mkdir "tmp" && mkdir "HF" && mkdir "models"
-RUN git clone https://github.com/comfyanonymous/ComfyUI.git ComfyUI && cd ComfyUI/custom_nodes && git clone https://github.com/ltdrdata/ComfyUI-Manager.git
-RUN bash -c "source 'venv/bin/activate' && pip3 install --upgrade pip && pip install uv"
-RUN bash -c "source 'venv/bin/activate' && cd ComfyUI && pip install --upgrade --upgrade-strategy only-if-needed -r requirements.txt"
-RUN git clone https://github.com/ggml-org/llama.cpp
+RUN git clone https://github.com/ggml-org/llama.cpp && \
+    git clone https://github.com/vllm-project/vllm.git && \
+    git clone https://github.com/ICTylor/HFDownloaderWebUI.git && \
+    git clone https://github.com/comfyanonymous/ComfyUI.git ComfyUI && cd ComfyUI/custom_nodes && git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+RUN pip3 install --upgrade pip && pip install uv
+RUN cd ComfyUI && pip install --upgrade --upgrade-strategy only-if-needed -r requirements.txt
 RUN cd llama.cpp && cmake -B build -DGGML_CUDA=ON && cmake --build build --config Release
-RUN git clone https://github.com/vllm-project/vllm.git
-RUN bash -c "source 'venv/bin/activate' && cd vllm && python use_existing_torch.py && uv pip install -r requirements/common.txt && uv pip install -r requirements/cuda.txt"
-RUN bash -c "source 'venv/bin/activate' && cd vllm && VLLM_USE_PRECOMPILED=1 uv pip install vllm"
-RUN bash -c "source 'venv/bin/activate' && uv pip install open-webui"
+RUN cd vllm && python use_existing_torch.py && uv pip install -r requirements/common.txt && uv pip install -r requirements/cuda.txt && VLLM_USE_PRECOMPILED=1 uv pip install vllm
+RUN uv pip install open-webui
 RUN curl -LO https://ollama.com/download/ollama-linux-amd64.tgz && tar -C /usr -xzf ollama-linux-amd64.tgz && rm ollama-linux-amd64.tgz
-RUN git clone https://github.com/ICTylor/HFDownloaderWebUI.git && ln -s /workspace/models /workspace/HFDownloaderWebUI/downloads
-RUN bash -c "source 'venv/bin/activate' && uv pip install -r HFDownloaderWebUI/requirements.txt"
 RUN curl -L -o llama-swap.tar.gz https://github.com/mostlygeek/llama-swap/releases/download/v157/llama-swap_157_linux_amd64.tar.gz \
     && tar -xzf llama-swap.tar.gz && chmod +x llama-swap && rm llama-swap.tar.gz
-RUN bash -c "source 'venv/bin/activate' && uv pip install watchdog PyYAML"
-COPY model_monitor.py /workspace
+RUN uv pip install watchdog PyYAML
+RUN uv pip install -r HFDownloaderWebUI/requirements.txt
+COPY model_monitor.py "${WORKSPACE_CONTAINER}"
 COPY run_everything.sh /
 
 EXPOSE 8188
